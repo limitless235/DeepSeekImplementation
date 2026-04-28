@@ -3,6 +3,7 @@ import torch
 from torch.optim.optimizer import Optimizer
 
 def newton_schulz_10(M):
+    M = M / (torch.linalg.norm(M) + 1e-12)
     n, m = M.shape
     transposed = False
     if n > m:
