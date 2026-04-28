@@ -33,8 +33,7 @@ class HeavilyCompressedAttention(nn.Module):
         
         KV = torch.cat([H_comp, H_sliding], dim=1).unsqueeze(1)
         
-        for h in range(self.n_h):
-            Q[:, h, :, :] = self.rmsnorm_q[h](Q[:, h, :, :])
+        Q = torch.stack([self.rmsnorm_q[h](Q[:, h, :, :]) for h in range(self.n_h)], dim=1)
         K = self.rmsnorm_k(KV)
         V = self.rmsnorm_v(KV)
         

@@ -63,8 +63,7 @@ class PureSlidingWindowAttention(nn.Module):
         K = self.W_K(H).view(B, T, 1, self.c).permute(0, 2, 1, 3)
         V = self.W_V(H).view(B, T, 1, self.c).permute(0, 2, 1, 3)
         
-        for h in range(self.n_h):
-            Q[:, h, :, :] = self.rmsnorm_q[h](Q[:, h, :, :])
+        Q = torch.stack([self.rmsnorm_q[h](Q[:, h, :, :]) for h in range(self.n_h)], dim=1)
         K = self.rmsnorm_k(K)
         V = self.rmsnorm_v(V)
         
@@ -74,10 +73,9 @@ class PureSlidingWindowAttention(nn.Module):
         
         S = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.c)
         
-        mask = torch.full((T, T), -float('inf'), device=H.device)
-        for t in range(T):
-            start = max(0, t - self.n_win + 1)
-            mask[t, start : t + 1] = 0.0
+        t_idx = torch.arange(T, device=H.device).unsqueeze(1)
+        s_idx = torch.arange(T, device=H.device).unsqueeze(0)
+        mask = torch.where((s_idx <= t_idx) & (s_idx >= t_idx - self.n_win + 1), 0.0, -float('inf'))
             
         S = S + mask.unsqueeze(0).unsqueeze(0)
         P = torch.softmax(S, dim=-1)

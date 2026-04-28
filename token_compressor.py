@@ -32,38 +32,33 @@ class TokenCompressor(nn.Module):
             Z_a = H @ self.W_a_Z
             Z_b = H @ self.W_b_Z
             
-            compressed_blocks = []
-            for i in range(T // m):
-                Z_a_slice = Z_a[:, m*i : m*(i+1), :] + self.B_a
-                if i == 0:
-                    Z_b_slice = torch.full((B_sz, m, self.c), -float('inf'), device=H.device, dtype=H.dtype)
-                    C_b_slice = torch.zeros((B_sz, m, self.c), device=H.device, dtype=H.dtype)
-                else:
-                    Z_b_slice = Z_b[:, m*(i-1) : m*i, :] + self.B_b
-                    C_b_slice = C_b[:, m*(i-1) : m*i, :]
+            C_a_blocks = C_a.view(B_sz, T // m, m, self.c)
+            Z_a_blocks = Z_a.view(B_sz, T // m, m, self.c) + self.B_a.unsqueeze(0).unsqueeze(0)
+            
+            C_b_blocks = torch.zeros_like(C_a_blocks)
+            if T // m > 1:
+                C_b_blocks[:, 1:, :, :] = C_b[:, :-m, :].reshape(B_sz, T // m - 1, m, self.c)
                 
-                C_a_slice = C_a[:, m*i : m*(i+1), :]
+            Z_b_blocks = torch.full_like(Z_a_blocks, -float('inf'))
+            if T // m > 1:
+                Z_b_reshaped = Z_b[:, :-m, :].reshape(B_sz, T // m - 1, m, self.c)
+                Z_b_blocks[:, 1:, :, :] = Z_b_reshaped + self.B_b.unsqueeze(0).unsqueeze(0)
                 
-                logits = torch.cat([Z_a_slice, Z_b_slice], dim=1)
-                probs = torch.softmax(logits, dim=1)
-                
-                vals = torch.cat([C_a_slice, C_b_slice], dim=1)
-                comp_i = (probs * vals).sum(dim=1)
-                compressed_blocks.append(comp_i)
-                
-            return torch.stack(compressed_blocks, dim=1)
+            logits = torch.cat([Z_a_blocks, Z_b_blocks], dim=2)
+            probs = torch.softmax(logits, dim=2)
+            
+            vals = torch.cat([C_a_blocks, C_b_blocks], dim=2)
+            comp = (probs * vals).sum(dim=2)
+            return comp
             
         elif self.mode == 'non-overlapped':
             m_prime = 16
             C = H @ self.W_KV
             Z = H @ self.W_Z
             
-            compressed_blocks = []
-            for j in range(T // m_prime):
-                Z_slice = Z[:, m_prime*j : m_prime*(j+1), :] + self.B
-                probs = torch.softmax(Z_slice, dim=1)
-                C_slice = C[:, m_prime*j : m_prime*(j+1), :]
-                comp_j = (probs * C_slice).sum(dim=1)
-                compressed_blocks.append(comp_j)
-                
-            return torch.stack(compressed_blocks, dim=1)
+            C_blocks = C.view(B_sz, T // m_prime, m_prime, self.c)
+            Z_blocks = Z.view(B_sz, T // m_prime, m_prime, self.c) + self.B.unsqueeze(0).unsqueeze(0)
+            
+            probs = torch.softmax(Z_blocks, dim=2)
+            comp = (probs * C_blocks).sum(dim=2)
+            return comp

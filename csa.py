@@ -44,11 +44,9 @@ class CompressedSparseAttention(nn.Module):
         I_scores = W_I * relu_dot
         I_ts = I_scores.sum(dim=2)
         
-        mask_causal_I = torch.full((T, T // 4), -float('inf'), device=H.device)
-        for t in range(T):
-            for s in range(T // 4):
-                if 4 * s <= t:
-                    mask_causal_I[t, s] = 0.0
+        t_idx = torch.arange(T, device=H.device).unsqueeze(1)
+        s_idx = torch.arange(T // 4, device=H.device).unsqueeze(0)
+        mask_causal_I = torch.where(4 * s_idx <= t_idx, 0.0, -float('inf'))
                     
         I_ts_masked = I_ts + mask_causal_I.unsqueeze(0)
         
@@ -67,8 +65,7 @@ class CompressedSparseAttention(nn.Module):
         
         Q = self.W_Q(H).view(B, T, self.n_h, self.c).permute(0, 2, 1, 3)
         
-        for h in range(self.n_h):
-            Q[:, h, :, :] = self.rmsnorm_q[h](Q[:, h, :, :])
+        Q = torch.stack([self.rmsnorm_q[h](Q[:, h, :, :]) for h in range(self.n_h)], dim=1)
         K = self.rmsnorm_k(KV)
         V = self.rmsnorm_v(KV)
         
@@ -80,10 +77,9 @@ class CompressedSparseAttention(nn.Module):
         
         S_comp = S[:, :, :, :T//4] + M_comp.unsqueeze(1)
         
-        M_sliding = torch.full((T, T), -float('inf'), device=H.device)
-        for t in range(T):
-            start = max(0, t - self.n_win + 1)
-            M_sliding[t, start : t + 1] = 0.0
+        t_idx_sw = torch.arange(T, device=H.device).unsqueeze(1)
+        s_idx_sw = torch.arange(T, device=H.device).unsqueeze(0)
+        M_sliding = torch.where((s_idx_sw <= t_idx_sw) & (s_idx_sw >= t_idx_sw - self.n_win + 1), 0.0, -float('inf'))
             
         S_sliding = S[:, :, :, T//4:] + M_sliding.unsqueeze(0).unsqueeze(0)
         

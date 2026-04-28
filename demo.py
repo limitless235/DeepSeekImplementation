@@ -10,7 +10,7 @@ def run_demo():
     print(f"Total Parameter Count: {total_params}")
     
     batch_size = 2
-    seq_len = 1024
+    seq_len = 128
     input_ids = torch.randint(0, 512, (batch_size, seq_len))
     targets = torch.randint(0, 512, (batch_size, seq_len))
     
