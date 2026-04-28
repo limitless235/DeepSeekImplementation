@@ -2,8 +2,12 @@ import torch
 import torch.nn as nn
 
 class TokenCompressor(nn.Module):
-    def __init__(self, d, c, mode='overlapped'):
+    def __init__(self, d=256, c=64, mode='overlapped'):
         super().__init__()
+        if mode == 'csa':
+            mode = 'overlapped'
+        elif mode == 'hca':
+            mode = 'non-overlapped'
         self.mode = mode
         self.d = d
         self.c = c
